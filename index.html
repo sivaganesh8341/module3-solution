@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="NarrowItDownApp">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Narrow It Down</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+   
+    <style>
+	/* General Styling */
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+    text-align: center;
+    padding: 20px;
+}
+
+h1 {
+    color: #007bff;
+    font-size: 28px;
+}
+
+/* Search Box and Button */
+.search-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px;
+}
+
+input[type="text"] {
+    width: 350px;
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    transition: 0.3s;
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: #0056b3;
+    box-shadow: 0px 0px 10px rgba(0, 91, 187, 0.5);
+}
+
+button {
+    padding: 12px 18px;
+    font-size: 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease-in-out;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+/* List Styling */
+ul {
+    list-style-type: none;
+    padding: 0;
+    max-width: 500px;
+    margin: auto;
+}
+
+li {
+    background: white;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    transition: 0.3s;
+}
+
+li:hover {
+    transform: scale(1.03);
+}
+
+li button {
+    background-color: #dc3545;
+    padding: 8px 12px;
+    font-size: 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+li button:hover {
+    background-color: #b02a37;
+}
+
+/* Loading Spinner */
+.loading-message {
+    margin-top: 20px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0, 123, 255, 0.2);
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Fade-in animation for results */
+.fade-in {
+    opacity: 0;
+    animation: fadeIn 0.5s ease-in forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Error Message */
+.message {
+    margin-top: 20px;
+    font-size: 18px;
+    color: #dc3545;
+}
+
+    </style>
+</head>
+<body ng-controller="NarrowItDownController as ctrl">
+
+    <h1>Narrow Down Your Menu Choice</h1>
+
+    <div class="search-container">
+        <input type="text" ng-model="ctrl.searchTerm" placeholder="Search for a menu item">
+        <button ng-click="ctrl.narrowItDown()">Narrow It Down For Me!</button>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-message" ng-if="ctrl.loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Error Message -->
+    <div class="message" ng-if="ctrl.errorMessage">
+        {{ ctrl.errorMessage }}
+    </div>
+
+    <found-items found="ctrl.found" on-remove="ctrl.removeItem(index)"></found-items>
+
+    <script>
+	
+	(function () {
+    'use strict';
+
+    angular.module('NarrowItDownApp', [])
+    .controller('NarrowItDownController', NarrowItDownController)
+    .service('MenuSearchService', MenuSearchService)
+    .directive('foundItems', FoundItemsDirective);
+
+    NarrowItDownController.$inject = ['MenuSearchService'];
+    function NarrowItDownController(MenuSearchService) {
+        var ctrl = this;
+        ctrl.found = [];
+        ctrl.searchTerm = '';
+        ctrl.loading = false;
+        ctrl.errorMessage = '';
+
+        ctrl.narrowItDown = function () {
+            if (!ctrl.searchTerm.trim()) {
+                ctrl.errorMessage = 'Please enter a search term!';
+                ctrl.found = [];
+                return;
+            }
+            ctrl.errorMessage = '';
+            ctrl.loading = true; // Show loader
+
+            MenuSearchService.getMatchedMenuItems(ctrl.searchTerm)
+                .then(function (result) {
+                    ctrl.found = result;
+                    ctrl.errorMessage = result.length ? '' : 'No items found!';
+                    ctrl.loading = false;
+                })
+                .catch(function () {
+                    ctrl.found = [];
+                    ctrl.errorMessage = 'Error fetching menu items!';
+                    ctrl.loading = false;
+                });
+        };
+
+        ctrl.removeItem = function (index) {
+            ctrl.found.splice(index, 1);
+        };
+    }
+
+    MenuSearchService.$inject = ['$http'];
+    function MenuSearchService($http) {
+        var service = this;
+
+        service.getMatchedMenuItems = function (searchTerm) {
+            return $http({
+                method: "GET",
+                url: "https://coursera-jhu-default-rtdb.firebaseio.com/menu_items.json"
+            }).then(function (response) {
+                var foundItems = [];
+                var menuItems = response.data;
+
+                if (!menuItems) {
+                    return foundItems; // Return empty if data is not available
+                }
+
+                // Loop through all categories
+                Object.keys(menuItems).forEach(function (categoryKey) {
+                    var categoryItems = menuItems[categoryKey].menu_items;
+                    if (Array.isArray(categoryItems)) {
+                        categoryItems.forEach(function (item) {
+                            if (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())) {
+                                foundItems.push(item);
+                            }
+                        });
+                    }
+                });
+
+                return foundItems;
+            });
+        };
+    }
+
+    function FoundItemsDirective() {
+        return {
+            restrict: 'E',
+            scope: {
+                found: '<',
+                onRemove: '&'
+            },
+            template: `
+                <ul>
+                    <li ng-repeat="item in found" ng-class="{ 'fade-in': found.length > 0 }">
+                        <span>{{ item.name }}, {{ item.short_name }}, {{ item.description }}</span>
+                        <button ng-click="onRemove({index: $index})">Don't want this one!</button>
+                    </li>
+                </ul>
+                <div class="message" ng-if="found.length === 0 && !loading">Nothing found</div>
+            `
+        };
+    }
+})();
+
+	</script>
+</body>
+</html>
